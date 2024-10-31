@@ -1,0 +1,226 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Обработка изображений</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            margin: 0;
+            padding: 20px;
+        }
+        canvas {
+            border: 1px solid black;
+            margin-top: 20px;
+        }
+        #controls {
+            text-align: center;
+            margin-top: 20px;
+        }
+        button, input[type="range"] {
+            margin: 5px;
+            padding: 10px;
+            font-size: 14px;
+        }
+        #loading {
+            display: none;
+            margin-top: 20px;
+        }
+    </style>
+    <script async src="https://docs.opencv.org/4.x/opencv.js"></script>
+</head>
+<body>
+    <h1>Приложение для обработки изображений</h1>
+
+    <input type="file" id="upload" accept="image/*" onchange="loadImage(event)" />
+    
+    <div id="controls">
+        <button onclick="applyLinearContrast()">Линейное контрастирование</button><br>
+        <button onclick="applyHistogramEqualization()">Эквализация гистограммы</button><br>
+        <button onclick="applyGlobalThreshold()">Глобальная пороговая обработка</button><br>
+        <button onclick="applyAdaptiveThreshold()">Адаптивная пороговая обработка</button><br>
+        <button onclick="applyMorphology()">Морфологическая обработка</button><br>
+        <button onclick="detectLines()">Обнаружение линий (Хафф)</button><br> <!-- Добавленная кнопка -->
+        <button onclick="detectCorners()">Обнаружение точек (Лаплас)</button><br> <!-- Новая кнопка -->
+
+        <label>Контраст:</label>
+        <input type="range" id="contrast-slider" min="0.5" max="3" step="0.1" value="1" onchange="applyContrastAndBrightness()" />
+        <span id="contrast-value">1</span>x<br>
+
+        <label>Яркость:</label>
+        <input type="range" id="brightness-slider" min="-100" max="100" step="10" value="0" onchange="applyContrastAndBrightness()" />
+        <span id="brightness-value">0</span>
+    </div>
+
+    <canvas id="canvas" width="500" height="500"></canvas>
+    <div id="loading">Загрузка...</div>
+
+    <script>
+        let originalImage = null;
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+        const loadingIndicator = document.getElementById('loading');
+        const contrastSlider = document.getElementById('contrast-slider');
+        const brightnessSlider = document.getElementById('brightness-slider');
+        const contrastValueLabel = document.getElementById('contrast-value');
+        const brightnessValueLabel = document.getElementById('brightness-value');
+
+        function loadImage(event) {
+            const file = event.target.files[0];
+            if (!file || !file.type.startsWith('image/')) {
+                alert('Пожалуйста, выберите корректный файл изображения.');
+                return;
+            }
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                const img = new Image();
+                img.onload = function() {
+                    canvas.width = img.width;
+                    canvas.height = img.height;
+                    ctx.drawImage(img, 0, 0);
+                    originalImage = cv.imread(canvas);
+                };
+                img.src = e.target.result;
+            };
+            reader.readAsDataURL(file);
+        }
+
+        function showLoading() {
+            loadingIndicator.style.display = 'block';
+        }
+
+        function hideLoading() {
+            loadingIndicator.style.display = 'none';
+        }
+
+        function applyLinearContrast() {
+            if (!originalImage) return;
+            showLoading();
+            let src = originalImage.clone();
+            let dst = new cv.Mat();
+            cv.convertScaleAbs(src, dst, 1.5, -100); // Пример масштабирования с фиксированным контрастом и яркостью
+            cv.imshow('canvas', dst);
+            cleanUp(src, dst);
+            hideLoading();
+        }
+
+        function applyContrastAndBrightness() {
+            if (!originalImage) return;
+            showLoading();
+
+            let src = originalImage.clone();
+            let dst = new cv.Mat();
+
+            const contrast = parseFloat(contrastSlider.value);
+            const brightness = parseInt(brightnessSlider.value);
+            contrastValueLabel.textContent = contrast.toFixed(1) + 'x';
+            brightnessValueLabel.textContent = brightness;
+
+            cv.convertScaleAbs(src, dst, contrast, brightness);
+            cv.imshow('canvas', dst);
+            cleanUp(src, dst);
+            hideLoading();
+        }
+
+        function applyHistogramEqualization() {
+            if (!originalImage) return;
+            showLoading();
+            let src = originalImage.clone();
+            let dst = new cv.Mat();
+            cv.cvtColor(src, src, cv.COLOR_RGBA2GRAY, 0);
+            cv.equalizeHist(src, dst);
+            cv.imshow('canvas', dst);
+            cleanUp(src, dst);
+            hideLoading();
+        }
+
+        function applyGlobalThreshold() {
+            if (!originalImage) return;
+            showLoading();
+            let src = originalImage.clone();
+            let dst = new cv.Mat();
+            cv.cvtColor(src, src, cv.COLOR_RGBA2GRAY, 0);
+            cv.threshold(src, dst, 127, 255, cv.THRESH_BINARY);
+            cv.imshow('canvas', dst);
+            cleanUp(src, dst);
+            hideLoading();
+        }
+
+        function applyAdaptiveThreshold() {
+            if (!originalImage) return;
+            showLoading();
+            let src = originalImage.clone();
+            let dst = new cv.Mat();
+            cv.cvtColor(src, src, cv.COLOR_RGBA2GRAY, 0);
+            cv.adaptiveThreshold(src, dst, 255, cv.ADAPTIVE_THRESH_GAUSSIAN_C, cv.THRESH_BINARY, 11, 2);
+            cv.imshow('canvas', dst);
+            cleanUp(src, dst);
+            hideLoading();
+        }
+
+        function applyMorphology() {
+            if (!originalImage) return;
+            showLoading();
+            let src = originalImage.clone();
+            let dst = new cv.Mat();
+            let kernel = cv.getStructuringElement(cv.MORPH_RECT, new cv.Size(5, 5));
+            cv.morphologyEx(src, dst, cv.MORPH_GRADIENT, kernel);
+            cv.imshow('canvas', dst);
+            cleanUp(src, dst, kernel);
+            hideLoading();
+        }
+
+        // Функция обнаружения линий (Хафф)
+        function detectLines() {
+            if (!originalImage) return;
+            showLoading();
+            
+            let src = originalImage.clone();
+            let edges = new cv.Mat();
+            cv.cvtColor(src, src, cv.COLOR_RGBA2GRAY, 0);
+            
+            // Применяем детектор Canny для выделения краев
+            cv.Canny(src, edges, 50, 150, 3, false);
+            
+            // Применяем преобразование Хаффа для нахождения линий
+            let lines = new cv.Mat();
+            cv.HoughLinesP(edges, lines, 1, Math.PI / 180, 50, 50, 10);
+            
+            // Рисуем найденные линии на изображении
+            for (let i = 0; i < lines.rows; i++) {
+                let pt1 = new cv.Point(lines.data32S[i * 4], lines.data32S[i * 4 + 1]);
+                let pt2 = new cv.Point(lines.data32S[i * 4 + 2], lines.data32S[i * 4 + 3]);
+                cv.line(src, pt1, pt2, [255, 0, 0, 255], 2, cv.LINE_AA);
+            }
+            
+            cv.imshow('canvas', src);
+            cleanUp(src, edges, lines);
+            hideLoading();
+        }
+
+        // Функция обнаружения точек (Лаплас)
+        function detectCorners() {
+            if (!originalImage) return;
+            showLoading();
+            
+            let src = originalImage.clone();
+            let dst = new cv.Mat();
+            cv.cvtColor(src, src, cv.COLOR_RGBA2GRAY, 0);
+            
+            // Применяем оператор Лапласа для обнаружения точек
+            cv.Laplacian(src, dst, cv.CV_8U, 3);
+            cv.imshow('canvas', dst);
+            cleanUp(src, dst);
+            hideLoading();
+        }
+
+        function cleanUp(...mats) {
+            mats.forEach(mat => mat.delete());
+        }
+    </script>
+</body>
+</html>
